@@ -6,12 +6,12 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY main.go ./
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /demo-app .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /demo-logger .
 
 FROM alpine:3.19
 
 RUN apk add --no-cache ca-certificates tzdata
-COPY --from=builder /demo-app /usr/local/bin/demo-app
+COPY --from=builder /demo-logger /usr/local/bin/demo-logger
 
 USER nobody:nobody
-ENTRYPOINT ["demo-app"]
+ENTRYPOINT ["demo-logger"]
