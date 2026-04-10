@@ -1,47 +1,52 @@
 {
-	"version": "2.0.0",
-	"tasks": [
-		{
-			"label": "Gas Town: Start (gt up)",
-			"type": "shell",
-			"command": "cd ${workspaceFolder}/.gt && gt up",
-			"presentation": {
-				"reveal": "always",
-				"panel": "shared",
-				"focus": true
-			},
-			"problemMatcher": []
-		},
-		{
-			"label": "Gas Town: Stop (gt down)",
-			"type": "shell",
-			"command": "cd ${workspaceFolder}/.gt && gt down",
-			"presentation": {
-				"reveal": "always",
-				"panel": "shared",
-				"focus": true
-			},
-			"problemMatcher": []
-		},
-		{
-			"label": "Gas Town: Status",
-			"type": "shell",
-			"command": "cd ${workspaceFolder}/.gt && gt status",
-			"presentation": {
-				"reveal": "always",
-				"panel": "shared"
-			},
-			"problemMatcher": []
-		},
-		{
-			"label": "Gas Town: Feed",
-			"type": "shell",
-			"command": "cd ${workspaceFolder}/.gt && gt feed --limit 50 --no-follow --plain",
-			"presentation": {
-				"reveal": "always",
-				"panel": "shared"
-			},
-			"problemMatcher": []
-		}
-	]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Gas Town: Start (gt up)",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/.gt && (gt status > /dev/null 2>&1 && echo 'Gas Town is already running.' || gt up)",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Gas Town: Stop (gt down)",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/.gt && gt down",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Gas Town: Status",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/.gt && gt status",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Gas Town: Feed",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/.gt && gt feed --limit 50 --no-follow --plain",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
 }
