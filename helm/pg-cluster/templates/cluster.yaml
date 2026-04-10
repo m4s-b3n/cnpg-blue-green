@@ -1,0 +1,110 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.cluster.name }}
+  labels:
+    {{- include "pg-cluster.labels" . | nindent 4 }}
+    {{- if .Values.bluegreen.enabled }}
+    deployment-type: bluegreen
+    environment: {{ .Values.bluegreen.environment }}
+    active: {{ .Values.bluegreen.active | quote }}
+    {{- end }}
+spec:
+  instances: {{ .Values.cluster.instances }}
+  imageName: {{ .Values.cluster.imageName }}
+
+  {{- if .Values.cluster.smartShutdownTimeout }}
+  smartShutdownTimeout: {{ .Values.cluster.smartShutdownTimeout }}
+  {{- end }}
+  {{- if .Values.cluster.stopDelay }}
+  stopDelay: {{ .Values.cluster.stopDelay }}
+  {{- end }}
+  {{- if .Values.cluster.switchoverDelay }}
+  switchoverDelay: {{ .Values.cluster.switchoverDelay }}
+  {{- end }}
+  {{- if .Values.cluster.primaryUpdateMethod }}
+  primaryUpdateMethod: {{ .Values.cluster.primaryUpdateMethod | quote }}
+  {{- end }}
+
+  {{- if .Values.bluegreen.enabled }}
+  inheritedMetadata:
+    labels:
+      active: {{ .Values.bluegreen.active | quote }}
+      environment: {{ .Values.bluegreen.environment }}
+  {{- end }}
+
+  postgresql:
+    parameters:
+      {{- range $key, $value := .Values.cluster.postgresql.parameters }}
+      {{ $key }}: {{ $value | quote }}
+      {{- end }}
+    pg_hba:
+      - host replication streaming_user all md5
+      - host all all all md5
+
+  {{ $dt := .Values.distributedTopology | default (dict) -}}
+  {{ $primary := $dt.primary | default "" -}}
+  {{ $self := $dt.self | default .Values.cluster.name -}}
+  {{ $source := $dt.source | default $primary -}}
+  {{ $promotionToken := $dt.promotionToken | default "" -}}
+
+  bootstrap:
+    {{- if eq .Values.cluster.bootstrapMode "pg_basebackup" }}
+    pg_basebackup:
+      source: {{ .Values.cluster_bootstrap.pg_basebackup.source | default $primary | quote }}
+    {{- else }}
+    initdb:
+      database: appdb
+      owner: appuser
+      secret:
+        name: {{ .Values.credentials.existingSecret | default (printf "%s-app-user" .Values.cluster.name) }}
+      {{- if and .Values.initdb.enabled .Values.initdb.scripts }}
+      postInitSQL:
+        {{- range .Values.initdb.scripts }}
+        - {{ . | quote }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+
+  {{- if and $dt.enabled (ne $primary "") (ne $source "") }}
+  replica:
+    primary: {{ $primary | quote }}
+    source: {{ $source | quote }}
+    self: {{ $self | quote }}
+    {{- if $promotionToken }}
+    promotionToken: {{ $promotionToken | quote }}
+    {{- end }}
+  {{- end }}
+
+  {{- if .Values.externalClusters }}
+  externalClusters:
+    {{- range .Values.externalClusters }}
+    - name: {{ .name }}
+      connectionParameters:
+        host: {{ .connectionParameters.host }}
+        user: {{ .connectionParameters.user }}
+        dbname: {{ .connectionParameters.dbname }}
+        {{- if .connectionParameters.sslmode }}
+        sslmode: {{ .connectionParameters.sslmode }}
+        {{- end }}
+      password:
+        name: {{ .passwordSecret.name }}
+        key: {{ .passwordSecret.key }}
+    {{- end }}
+  {{- end }}
+
+  storage:
+    {{- if .Values.cluster.storage.storageClass }}
+    storageClass: {{ .Values.cluster.storage.storageClass }}
+    {{- end }}
+    size: {{ .Values.cluster.storage.size }}
+
+  {{- if .Values.cluster.resources }}
+  resources:
+    {{- toYaml .Values.cluster.resources | nindent 4 }}
+  {{- end }}
+
+  {{- if .Values.monitoring.enabled }}
+  monitoring:
+    enablePodMonitor: true
+  {{- end }}

@@ -1,0 +1,76 @@
+# Default values for pg-cluster
+
+bluegreen:
+  enabled: false
+  environment: blue
+  active: true
+
+cluster:
+  name: pg-cluster
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.4
+  bootstrapMode: initdb  # initdb | pg_basebackup
+  primaryUpdateMethod: switchover
+  switchoverDelay: 0
+  stopDelay: 60
+  smartShutdownTimeout: 30
+
+  storage:
+    size: 2Gi
+    storageClass: ""
+
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "128MB"
+      effective_cache_size: "256MB"
+      work_mem: "4MB"
+      wal_level: "replica"
+      max_wal_senders: "10"
+      max_replication_slots: "10"
+      wal_log_hints: "on"
+      archive_mode: "on"
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  bootstrap:
+    replica:
+      enabled: false
+      source: ""
+
+credentials:
+  username: appuser
+  password: changeme123
+
+initdb:
+  enabled: true
+  scripts:
+    - "CREATE TABLE IF NOT EXISTS demo_log (id SERIAL PRIMARY KEY, ts TIMESTAMPTZ DEFAULT now(), msg TEXT)"
+
+# Distributed topology (CNPG 1.25+)
+distributedTopology:
+  enabled: false
+  primary: ""
+  source: ""
+  self: ""
+  promotionToken: ""
+
+# External clusters for replication
+externalClusters: []
+
+# Bootstrap from another cluster via pg_basebackup
+cluster_bootstrap:
+  pg_basebackup:
+    source: ""
+
+monitoring:
+  enabled: false
+
+backup:
+  enabled: false

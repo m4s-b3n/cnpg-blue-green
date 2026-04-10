@@ -1,0 +1,82 @@
+# Green cluster — replica, bootstraps via pg_basebackup from blue
+bluegreen:
+  enabled: true
+  environment: green
+  active: false
+
+cluster:
+  name: pg-green
+  bootstrapMode: pg_basebackup
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.4
+  instances: 1
+  smartShutdownTimeout: 30
+  primaryUpdateMethod: switchover
+  switchoverDelay: 0
+  stopDelay: 60
+
+  storage:
+    size: 2Gi
+
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "128MB"
+      effective_cache_size: "256MB"
+      work_mem: "4MB"
+      wal_level: "replica"
+      max_wal_senders: "10"
+      max_replication_slots: "10"
+      wal_log_hints: "on"
+      archive_mode: "on"
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+credentials:
+  username: appuser
+  password: changeme123
+
+initdb:
+  enabled: false
+
+distributedTopology:
+  enabled: true
+  primary: pg-blue
+  source: pg-blue
+  self: pg-green
+  promotionToken: ""
+
+externalClusters:
+  - name: pg-blue
+    connectionParameters:
+      host: pg-blue-rw.cnpg-demo.svc.cluster.local
+      user: streaming_user
+      dbname: postgres
+      sslmode: disable
+    passwordSecret:
+      name: pg-blue-replica-user
+      key: password
+  - name: pg-green
+    connectionParameters:
+      host: pg-green-rw.cnpg-demo.svc.cluster.local
+      user: streaming_user
+      dbname: postgres
+      sslmode: disable
+    passwordSecret:
+      name: pg-green-replica-user
+      key: password
+
+cluster_bootstrap:
+  pg_basebackup:
+    source: pg-blue
+
+monitoring:
+  enabled: false
+
+backup:
+  enabled: false
