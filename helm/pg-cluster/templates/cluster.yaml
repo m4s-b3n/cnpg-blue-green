@@ -7,7 +7,6 @@ metadata:
     {{- if .Values.bluegreen.enabled }}
     deployment-type: bluegreen
     environment: {{ .Values.bluegreen.environment }}
-    active: {{ .Values.bluegreen.active | quote }}
     {{- end }}
 spec:
   instances: {{ .Values.cluster.instances }}
@@ -29,7 +28,6 @@ spec:
   {{- if .Values.bluegreen.enabled }}
   inheritedMetadata:
     labels:
-      active: {{ .Values.bluegreen.active | quote }}
       environment: {{ .Values.bluegreen.environment }}
   {{- end }}
 

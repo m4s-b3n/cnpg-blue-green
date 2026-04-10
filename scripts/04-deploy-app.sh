@@ -6,8 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "=== Deploying application services ==="
 
-# Application-facing services that route via active label
-cat <<'EOF' | kubectl apply -n "$NAMESPACE" -f -
+# Application-facing services that route to the active cluster by name
+cat <<EOF | kubectl apply -n "$NAMESPACE" -f -
 ---
 apiVersion: v1
 kind: Service
@@ -25,7 +25,7 @@ spec:
   selector:
     cnpg.io/podRole: instance
     role: primary
-    active: "true"
+    cnpg.io/cluster: pg-blue
 ---
 apiVersion: v1
 kind: Service
@@ -43,7 +43,7 @@ spec:
   selector:
     cnpg.io/podRole: instance
     role: replica
-    active: "true"
+    cnpg.io/cluster: pg-blue
 ---
 apiVersion: v1
 kind: Service
@@ -60,8 +60,13 @@ spec:
       targetPort: 5432
   selector:
     cnpg.io/podRole: instance
-    active: "true"
+    cnpg.io/cluster: pg-blue
 EOF
+
+echo "=== Deploying PgBouncer connection pooler ==="
+kubectl apply -n "$NAMESPACE" -f "$SCRIPT_DIR/../app/k8s/pgbouncer.yaml"
+echo "Waiting for PgBouncer to be ready..."
+kubectl rollout status deployment/pgbouncer -n "$NAMESPACE" --timeout=120s
 
 echo "=== Deploying demo application ==="
 

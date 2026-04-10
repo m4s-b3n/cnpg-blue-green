@@ -1,0 +1,85 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  labels:
+    app: pgbouncer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgbouncer
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+    spec:
+      containers:
+        - name: pgbouncer
+          image: edoburu/pgbouncer:latest
+          ports:
+            - containerPort: 5432
+          env:
+            - name: DB_HOST
+              value: "pg-rw"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              value: "appuser"
+            - name: DB_PASSWORD
+              value: "changeme123"
+            - name: DB_NAME
+              value: "appdb"
+            - name: POOL_MODE
+              value: "session"
+            - name: AUTH_TYPE
+              value: "plain"
+            - name: ADMIN_USERS
+              value: "appuser"
+            - name: MAX_CLIENT_CONN
+              value: "100"
+            - name: DEFAULT_POOL_SIZE
+              value: "25"
+            - name: MIN_POOL_SIZE
+              value: "5"
+            - name: SERVER_CHECK_QUERY
+              value: "SELECT 1"
+            - name: LISTEN_PORT
+              value: "5432"
+            - name: IGNORE_STARTUP_PARAMETERS
+              value: "extra_float_digits"
+            - name: DNS_MAX_TTL
+              value: "0"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "50m"
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  labels:
+    app: pgbouncer
+spec:
+  type: ClusterIP
+  ports:
+    - name: pgbouncer
+      port: 5432
+      targetPort: 5432
+  selector:
+    app: pgbouncer

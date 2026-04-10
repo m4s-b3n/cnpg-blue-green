@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
@@ -54,8 +53,7 @@ func main() {
 }
 
 func connectWithBackoff(ctx context.Context, dsn string) *sql.DB {
-	backoff := time.Second
-	const maxBackoff = 30 * time.Second
+	const retryInterval = time.Second
 
 	for {
 		select {
@@ -67,20 +65,19 @@ func connectWithBackoff(ctx context.Context, dsn string) *sql.DB {
 		db, err := sql.Open("postgres", dsn)
 		if err != nil {
 			fmt.Printf("[%s] CONNECT FAIL | error=%s\n", ts(), err)
-			sleep(ctx, backoff)
-			backoff = nextBackoff(backoff, maxBackoff)
+			sleep(ctx, retryInterval)
 			continue
 		}
 
 		db.SetMaxOpenConns(5)
 		db.SetMaxIdleConns(2)
-		db.SetConnMaxLifetime(5 * time.Minute)
+		db.SetConnMaxLifetime(30 * time.Second)
+		db.SetConnMaxIdleTime(5 * time.Second)
 
 		if err := db.PingContext(ctx); err != nil {
 			fmt.Printf("[%s] CONNECT FAIL | error=%s\n", ts(), err)
 			db.Close()
-			sleep(ctx, backoff)
-			backoff = nextBackoff(backoff, maxBackoff)
+			sleep(ctx, retryInterval)
 			continue
 		}
 
@@ -120,8 +117,7 @@ func writeAndCount(ctx context.Context, db *sql.DB, dsn string) {
 }
 
 func reconnect(ctx context.Context, db *sql.DB, dsn string) {
-	backoff := time.Second
-	const maxBackoff = 30 * time.Second
+	const retryInterval = 500 * time.Millisecond
 
 	for {
 		select {
@@ -130,11 +126,10 @@ func reconnect(ctx context.Context, db *sql.DB, dsn string) {
 		default:
 		}
 
-		sleep(ctx, backoff)
+		sleep(ctx, retryInterval)
 
 		if err := db.PingContext(ctx); err != nil {
 			fmt.Printf("[%s] RECONNECT FAIL | error=%s\n", ts(), err)
-			backoff = nextBackoff(backoff, maxBackoff)
 			continue
 		}
 
@@ -149,16 +144,6 @@ func ts() string {
 
 func fmtLatency(d time.Duration) string {
 	return fmt.Sprintf("%dms", d.Milliseconds())
-}
-
-func nextBackoff(current, max time.Duration) time.Duration {
-	// Exponential backoff with jitter
-	next := current * 2
-	if next > max {
-		next = max
-	}
-	jitter := time.Duration(rand.Int63n(int64(next) / 4))
-	return next + jitter
 }
 
 func sleep(ctx context.Context, d time.Duration) {

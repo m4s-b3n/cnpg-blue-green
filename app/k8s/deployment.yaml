@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: demo-app-config
 data:
-  DATABASE_URL: "postgresql://appuser:changeme123@pg-rw.cnpg-demo.svc.cluster.local:5432/appdb?sslmode=disable"
+  DATABASE_URL: "postgresql://appuser:changeme123@pgbouncer.cnpg-demo.svc.cluster.local:5432/appdb?sslmode=disable"
 ---
 apiVersion: apps/v1
 kind: Deployment
