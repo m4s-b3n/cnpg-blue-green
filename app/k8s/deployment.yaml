@@ -1,34 +1,33 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: demo-logger-config
-  namespace: cnpg-demo
+  name: demo-app-config
 data:
   DATABASE_URL: "postgresql://appuser:changeme123@pg-rw.cnpg-demo.svc.cluster.local:5432/appdb?sslmode=disable"
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: demo-logger
-  namespace: cnpg-demo
+  name: demo-app
   labels:
-    app: demo-logger
+    app: demo-app
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: demo-logger
+      app: demo-app
   template:
     metadata:
       labels:
-        app: demo-logger
+        app: demo-app
     spec:
       containers:
-        - name: demo-logger
-          image: demo-logger:latest
+        - name: demo-app
+          image: demo-app:latest
+          imagePullPolicy: Never
           envFrom:
             - configMapRef:
-                name: demo-logger-config
+                name: demo-app-config
           resources:
             requests:
               memory: "32Mi"
