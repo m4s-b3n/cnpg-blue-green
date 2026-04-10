@@ -11,7 +11,7 @@ VALUES_FILE="$CHART_DIR/values/green.yaml"
 echo "=== Deploying Green cluster ($GREEN_CLUSTER) ==="
 
 # Verify blue is ready
-kubectl wait --for=condition=Ready cluster/"$BLUE_CLUSTER" -n "$NAMESPACE" --timeout=60s
+kubectl wait --for=condition=Ready cluster/"$BLUE_CLUSTER" -n "$NAMESPACE" --timeout=600s
 
 if helm list -n "$NAMESPACE" | grep -q "$GREEN_CLUSTER"; then
   echo "Green cluster exists, upgrading..."
