@@ -1,0 +1,57 @@
+{{- if eq .Values.mode "infra" }}
+{{- $blue := include "cnpg-bg.blue" . -}}
+{{- $green := include "cnpg-bg.green" . -}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pg-rw
+  labels:
+    {{- include "cnpg-bg.labels" . | nindent 4 }}
+    cnpg-blue-green/operation: read-write
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+  selector:
+    cnpg.io/podRole: instance
+    role: primary
+    cnpg.io/cluster: {{ $blue }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pg-ro
+  labels:
+    {{- include "cnpg-bg.labels" . | nindent 4 }}
+    cnpg-blue-green/operation: read-only
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+  selector:
+    cnpg.io/podRole: instance
+    role: replica
+    cnpg.io/cluster: {{ $blue }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pg-r
+  labels:
+    {{- include "cnpg-bg.labels" . | nindent 4 }}
+    cnpg-blue-green/operation: read-any
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+  selector:
+    cnpg.io/podRole: instance
+    cnpg.io/cluster: {{ $blue }}
+{{- end }}

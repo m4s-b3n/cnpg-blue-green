@@ -1,0 +1,14 @@
+# KSV-0125: "Untrusted registry" — ghcr.io/cloudnative-pg/ is the official CNPG
+#            project registry (same as the PostgreSQL image). Trivy has no config
+#            key to extend the trusted-registry list for misconfiguration checks.
+KSV-0125
+
+# KSV-01010: "Sensitive ConfigMap key" — the 'phase' key in cnpg-bg-status ConfigMap
+#             stores a switchover phase name (e.g. "1) PAUSE"), not credentials.
+KSV-01010
+
+# KSV-0020 / KSV-0021: "runAsUser/Group >= 10000" — ghcr.io/cloudnative-pg/pgbouncer
+#            ships with UID 998 / GID 996 as the pgbouncer system user. Overriding
+#            to an arbitrary high UID would break file ownership on image-owned paths.
+KSV-0020
+KSV-0021

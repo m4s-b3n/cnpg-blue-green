@@ -1,0 +1,86 @@
+{{- if eq .Values.mode "infra" }}
+{{- if .Values.pgbouncer.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cnpg-bg.labels" . | nindent 4 }}
+    app: pgbouncer
+spec:
+  replicas: {{ .Values.pgbouncer.replicas }}
+  selector:
+    matchLabels:
+      app: pgbouncer
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+        cnpg-blue-green/database: {{ .Values.database.name }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 998
+        runAsGroup: 996
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: pgbouncer-config
+          projected:
+            sources:
+              - configMap:
+                  name: pgbouncer-config
+              - secret:
+                  name: pgbouncer-userlist
+      containers:
+        - name: pgbouncer
+          image: {{ include "cnpg-bg.pgbouncerImage" . }}
+          imagePullPolicy: {{ .Values.pgbouncer.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: pgbouncer-config
+              mountPath: /etc/pgbouncer
+              readOnly: true
+          {{- with .Values.pgbouncer.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cnpg-bg.labels" . | nindent 4 }}
+    app: pgbouncer
+spec:
+  type: ClusterIP
+  ports:
+    - name: pgbouncer
+      port: 5432
+      targetPort: 5432
+  selector:
+    app: pgbouncer
+{{- end }}
+{{- end }}

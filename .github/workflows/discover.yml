@@ -1,0 +1,116 @@
+---
+# Callable sub-workflow: discovers all releasable components from the repository
+# tree and emits the job matrices consumed by release.yml and onrelease.yml.
+#
+# Inputs
+#   release-tag (optional) — release tag (e.g. "cnpg-bg-v0.4.0"). When provided, the
+#                    workflow also populates retag-matrix or chart-matrix for
+#                    that specific component.
+#
+# Outputs
+#   build-matrix    [{image, file}]                one entry per images/*/Dockerfile
+#   release-matrix  [{name, path}]                 one entry per .releaserc.json;
+#                                                  chart components sorted last so
+#                                                  their git-push is a fast-forward
+#   retag-matrix    [{image, version}]             non-empty when tag → image component
+#   chart-matrix    [{component, version, path}]   non-empty when tag → chart component
+name: Discover Components
+
+on:
+  workflow_call:
+    inputs:
+      release-tag:
+        description: >
+          Optional release tag (e.g. "cnpg-bg-v0.4.0"). When provided, populates
+          retag-matrix or chart-matrix for the matching component only.
+        type: string
+        required: false
+    outputs:
+      build-matrix:
+        description: "JSON array [{image, file}]"
+        value: ${{ jobs.discover.outputs.build-matrix }}
+      release-matrix:
+        description: "JSON array [{name, path}]; chart components last"
+        value: ${{ jobs.discover.outputs.release-matrix }}
+      retag-matrix:
+        description: "JSON array [{image, version}]; non-empty when tag targets an image"
+        value: ${{ jobs.discover.outputs.retag-matrix }}
+      chart-matrix:
+        description: "JSON array [{component, version, path}]; non-empty when tag targets a chart"
+        value: ${{ jobs.discover.outputs.chart-matrix }}
+
+permissions: {}
+
+jobs:
+  discover:
+    name: Discover components
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      build-matrix: ${{ steps.scan.outputs.build-matrix }}
+      release-matrix: ${{ steps.scan.outputs.release-matrix }}
+      retag-matrix: ${{ steps.scan.outputs.retag-matrix }}
+      chart-matrix: ${{ steps.scan.outputs.chart-matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Scan components
+        id: scan
+        env:
+          TAG: ${{ inputs.release-tag }}
+        run: |
+          # ── build-matrix ─────────────────────────────────────────────────────────
+          # One entry per images/*/Dockerfile; always built from the repo root.
+          build_matrix='[]'
+          while IFS= read -r dockerfile; do
+            image=$(basename "$(dirname "$dockerfile")")
+            entry=$(jq -cn --arg img "$image" --arg f "./${dockerfile}" '{image: $img, file: $f}')
+            build_matrix=$(jq -c --argjson e "$entry" '. + [$e]' <<< "$build_matrix")
+          done < <(find images -name "Dockerfile" | sort)
+
+          # ── release-matrix ───────────────────────────────────────────────────────
+          # One entry per .releaserc.json. Chart components appended last so their
+          # @semantic-release/git commit+push back to main is always a fast-forward.
+          release_images='[]'
+          release_charts='[]'
+          while IFS= read -r rc; do
+            path="${rc%/.releaserc.json}"
+            path="${path#./}"
+            name=$(basename "$path")
+            entry=$(jq -cn --arg n "$name" --arg p "$path" '{name: $n, path: $p}')
+            if [[ -d "charts/${name}" ]]; then
+              release_charts=$(jq -c --argjson e "$entry" '. + [$e]' <<< "$release_charts")
+            else
+              release_images=$(jq -c --argjson e "$entry" '. + [$e]' <<< "$release_images")
+            fi
+          done < <(find . -name ".releaserc.json" -not -path "*/node_modules/*" | sort)
+          release_matrix=$(jq -c --argjson c "$release_charts" '. + $c' <<< "$release_images")
+
+          # ── retag / chart matrices ────────────────────────────────────────────────
+          # Only populated when a tag is provided (used by onrelease.yml).
+          retag_matrix='[]'
+          chart_matrix='[]'
+          if [[ -n "$TAG" ]]; then
+            component="${TAG%%-v[0-9]*}"
+            version="${TAG#"${component}-v"}"
+            if [[ -d "charts/${component}" ]]; then
+              chart_matrix=$(jq -cn \
+                --arg c "$component" --arg v "$version" --arg p "charts/${component}" \
+                '[{component: $c, version: $v, path: $p}]')
+            else
+              retag_matrix=$(jq -cn \
+                --arg img "$component" --arg v "$version" \
+                '[{image: $img, version: $v}]')
+            fi
+          fi
+
+          {
+            echo "build-matrix=${build_matrix}"
+            echo "release-matrix=${release_matrix}"
+            echo "retag-matrix=${retag_matrix}"
+            echo "chart-matrix=${chart_matrix}"
+          } >> "$GITHUB_OUTPUT"

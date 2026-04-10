@@ -1,0 +1,127 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CNPG Blue/Green — Single chart, three modes
+#
+# mode: infra  → Services, PgBouncer, RBAC, replication secrets
+# mode: blue   → Blue CNPG cluster + post-upgrade hook
+# mode: green  → Green CNPG cluster + post-upgrade hook
+# ─────────────────────────────────────────────────────────────────────────────
+
+mode: infra # infra | blue | green
+
+# Database spec — shared across all modes
+database:
+  name: myapp
+  instances: 3
+  image:
+    registry: ghcr.io
+    repository: cloudnative-pg/postgresql
+    tag: "17.10"
+
+  storage:
+    size: 1Gi
+    storageClass: ""
+
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "128MB"
+      effective_cache_size: "256MB"
+      work_mem: "4MB"
+      wal_level: "replica"
+      max_wal_senders: "10"
+      max_replication_slots: "10"
+      wal_log_hints: "on"
+      archive_mode: "on"
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  primaryUpdateMethod: switchover
+  switchoverDelay: 0
+  stopDelay: 60
+  smartShutdownTimeout: 30
+
+# Credentials
+credentials:
+  username: appuser
+  # Leave empty to auto-generate and persist from existing blue app Secret.
+  # Set explicitly to pin the password (e.g. via --set or sealed values).
+  password: ""
+  secret:
+    # Set to false to manage app credential Secrets yourself.
+    create: true
+    # Shared Secret name used by both blue and green.
+    # Leave empty for default: <database.name>-app-user
+    name: ""
+    keys:
+      # Key used by secretKeyRef consumers (the Secret will always also include
+      # standard `password` for CNPG basic-auth compatibility).
+      password: password
+
+replication:
+  username: streaming_user
+  # Password handling for the streaming replication role.
+  #   - Leave `password` empty to auto-generate a random password on first
+  #     install. It is stored in the per-cluster Secret and persisted across
+  #     upgrades via a Secret lookup, so nothing sensitive needs to live here.
+  #   - Set `password` to pin a specific value (e.g. via --set / a sealed value).
+  password: ""
+  secret:
+    # Set to false to manage replication Secrets yourself.
+    create: true
+    # Shared Secret name used by both blue and green.
+    # Leave empty for default: <database.name>-replica-user
+    name: ""
+    keys:
+      # Key used by refs that allow explicit key mapping (externalClusters and hooks).
+      # The Secret will always also include standard `password` for CNPG managed roles.
+      password: password
+
+# Initial SQL (only used by blue on first install)
+initdb:
+  postInitSQL:
+    - "CREATE TABLE IF NOT EXISTS demo_log (id SERIAL PRIMARY KEY, ts TIMESTAMPTZ DEFAULT now(), msg TEXT)"
+
+# PgBouncer (mode: infra)
+pgbouncer:
+  enabled: true
+  replicas: 1
+  image:
+    registry: ghcr.io
+    repository: cloudnative-pg/pgbouncer
+    tag: "1.25.2"
+  imagePullPolicy: IfNotPresent
+  dbName: appdb
+  poolMode: session
+  maxClientConn: 100
+  defaultPoolSize: 25
+  minPoolSize: 5
+  resources:
+    requests:
+      memory: "32Mi"
+      cpu: "10m"
+    limits:
+      memory: "64Mi"
+      cpu: "50m"
+
+# Hook settings (mode: blue/green)
+hooks:
+  image:
+    registry: ghcr.io
+    repository: m4s-b3n/cnpg-blue-green/cnpg-bg-hooks
+    tag: latest
+  imagePullPolicy: IfNotPresent
+  healthCheckTimeout: 300
+  switchoverTimeout: 120
+  switchoverEnabled: true
+  phaseHoldSeconds: 0 # set >0 to hold each switchover phase for monitor/demo visibility
+  serviceAccount: cnpg-bg-hooks
+
+# Monitoring
+monitoring:
+  enabled: false

@@ -1,0 +1,5 @@
+# Whitelist: only images/demo-app/{go.mod,go.sum,main.go} are used.
+**
+!images/demo-app/go.mod
+!images/demo-app/go.sum
+!images/demo-app/main.go

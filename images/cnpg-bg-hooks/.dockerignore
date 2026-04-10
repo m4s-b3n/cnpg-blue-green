@@ -1,0 +1,3 @@
+# Whitelist: only images/cnpg-bg-hooks/scripts/ is used (COPY images/cnpg-bg-hooks/scripts/ /scripts/).
+**
+!images/cnpg-bg-hooks/scripts/**

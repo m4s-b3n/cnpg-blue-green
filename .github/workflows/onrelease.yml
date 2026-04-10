@@ -1,0 +1,64 @@
+---
+# Triggered when semantic-release-monorepo pushes a component version tag.
+#
+# Tag format (default from semantic-release-monorepo): <component>-v<version>
+#   hooks-v1.2.3   → retag the "hooks" Docker image
+#   test-v0.5.0    → retag the "test" Docker image
+#   cnpg-bg-v0.4.0 → package and push the cnpg-bg Helm chart to OCI
+#
+# The parse-tag job extracts the component name and bare version (no "v"
+# prefix) so downstream jobs receive clean values like "hooks" and "1.2.3".
+#
+# source-tag is the default branch name: the SHA-tagged image built during
+# the push-to-main workflow is also tagged with the branch name by docker.yml,
+# so retagging from that tag reliably finds the right image.
+name: On Release
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  parse-tag:
+    name: Parse tag
+    uses: ./.github/workflows/discover.yml
+    permissions:
+      contents: read
+    with:
+      release-tag: ${{ github.event.release.tag_name }}
+
+  retag-image:
+    name: Retag ${{ matrix.image }}
+    needs: [parse-tag]
+    if: needs.parse-tag.outputs.retag-matrix != '[]'
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.parse-tag.outputs.retag-matrix) }}
+    uses: infinite-automations/workflows/.github/workflows/oras-tag.yml@6a56d002d825974b7405bf096d1b37dfc414bc5e # v1.3.0
+    with:
+      image: ghcr.io/${{ github.repository }}/${{ matrix.image }}
+      source-tag: ${{ github.event.repository.default_branch || '' }}
+      tags: |
+        ${{ matrix.version }}
+        latest
+      oras-version: 1.2.2
+    permissions:
+      contents: read
+      packages: write
+
+  push-chart:
+    name: Push chart ${{ matrix.component }}
+    needs: [parse-tag]
+    if: needs.parse-tag.outputs.chart-matrix != '[]'
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.parse-tag.outputs.chart-matrix) }}
+    uses: infinite-automations/workflows/.github/workflows/helm-push.yml@6a56d002d825974b7405bf096d1b37dfc414bc5e # v1.3.0
+    with:
+      helm-version: 4.2.0
+      chart-path: ${{ matrix.path }}
+    permissions:
+      contents: read
+      packages: write

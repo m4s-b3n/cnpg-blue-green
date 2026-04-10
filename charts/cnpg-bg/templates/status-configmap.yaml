@@ -1,0 +1,14 @@
+{{- if eq .Values.mode "infra" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cnpg-bg-status
+  labels:
+    {{- include "cnpg-bg.labels" . | nindent 4 }}
+data:
+  phase: "IDLE"
+  active: ""
+  message: ""
+  timestamp: ""
+{{- end }}

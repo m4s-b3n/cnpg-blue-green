@@ -1,0 +1,66 @@
+{{- if eq .Values.mode "blue" }}
+{{- $blue := include "cnpg-bg.blue" . -}}
+{{- $green := include "cnpg-bg.green" . -}}
+{{- $blueReplicaSecretName := include "cnpg-bg.blueReplicaSecretName" . -}}
+{{- $blueAppSecretName := include "cnpg-bg.blueAppSecretName" . -}}
+{{- $replicaPasswordKey := include "cnpg-bg.replicaPasswordKey" . -}}
+{{- $appPasswordKey := include "cnpg-bg.appPasswordKey" . -}}
+---
+# Post-install hook (blue only): create replication user, wait for cluster
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $blue }}-post-install
+  labels:
+    {{- include "cnpg-bg.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        cnpg-blue-green/hook: post-install
+        cnpg-blue-green/cluster: {{ $blue }}
+    spec:
+      serviceAccountName: {{ .Values.hooks.serviceAccount }}-{{ .Values.mode }}
+      restartPolicy: OnFailure
+      containers:
+        - name: hook
+          image: {{ include "cnpg-bg.hookImage" . }}
+          imagePullPolicy: {{ .Values.hooks.imagePullPolicy }}
+          env:
+            - name: HOOK_ACTION
+              value: "post-install"
+            - name: NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: BLUE_CLUSTER
+              value: {{ $blue | quote }}
+            - name: GREEN_CLUSTER
+              value: {{ $green | quote }}
+            - name: MY_CLUSTER
+              value: {{ $blue | quote }}
+            - name: DB_NAME
+              value: "appdb"
+            - name: REPL_USERNAME
+              value: {{ .Values.replication.username | quote }}
+            - name: REPL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $blueReplicaSecretName }}
+                  key: {{ $replicaPasswordKey }}
+            - name: APP_USERNAME
+              value: {{ .Values.credentials.username | quote }}
+            - name: APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $blueAppSecretName }}
+                  key: {{ $appPasswordKey }}
+            - name: PGBOUNCER_ENABLED
+              value: {{ .Values.pgbouncer.enabled | quote }}
+            - name: HEALTH_CHECK_TIMEOUT
+              value: {{ .Values.hooks.healthCheckTimeout | quote }}
+{{- end }}

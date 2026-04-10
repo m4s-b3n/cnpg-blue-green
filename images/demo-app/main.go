@@ -1,0 +1,197 @@
+package main
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	_ "github.com/lib/pq"
+)
+
+const createTableSQL = `CREATE TABLE IF NOT EXISTS demo_log (
+	id SERIAL PRIMARY KEY,
+	ts TIMESTAMPTZ DEFAULT now(),
+	msg TEXT
+)`
+
+func main() {
+	dsn := buildDSN()
+	if dsn == "" {
+		log.Fatal("DATABASE_URL or PGHOST+PGUSER+PGPASSWORD+PGDATABASE is required")
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	db := connectWithBackoff(ctx, dsn)
+	if db == nil {
+		return
+	}
+	defer db.Close()
+
+	if err := ensureTable(ctx, db); err != nil {
+		log.Printf("failed to create table: %v", err)
+		return
+	}
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Printf("[%s] Shutting down gracefully\n", ts())
+			return
+		case <-ticker.C:
+			writeAndCount(ctx, db)
+		}
+	}
+}
+
+func connectWithBackoff(ctx context.Context, dsn string) *sql.DB {
+	const retryInterval = time.Second
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		db, err := sql.Open("postgres", dsn)
+		if err != nil {
+			fmt.Printf("[%s] CONNECT FAIL | error=%s\n", ts(), err)
+			sleep(ctx, retryInterval)
+			continue
+		}
+
+		db.SetMaxOpenConns(5)
+		db.SetMaxIdleConns(2)
+		db.SetConnMaxLifetime(30 * time.Second)
+		db.SetConnMaxIdleTime(5 * time.Second)
+
+		if err := db.PingContext(ctx); err != nil {
+			fmt.Printf("[%s] CONNECT FAIL | error=%s\n", ts(), err)
+			db.Close()
+			sleep(ctx, retryInterval)
+			continue
+		}
+
+		fmt.Printf("[%s] Connected to PostgreSQL\n", ts())
+		return db
+	}
+}
+
+func ensureTable(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, createTableSQL)
+	return err
+}
+
+func writeAndCount(ctx context.Context, db *sql.DB) {
+	start := time.Now()
+
+	msg := fmt.Sprintf("heartbeat from demo-logger at %s", ts())
+	_, err := db.ExecContext(ctx, "INSERT INTO demo_log (msg) VALUES ($1)", msg)
+
+	if err != nil {
+		latency := time.Since(start)
+		fmt.Printf("[%s] WRITE FAIL | error=%s | latency=%s\n", ts(), err, fmtLatency(latency))
+		reconnect(ctx, db)
+		return
+	}
+
+	var count int64
+	err = db.QueryRowContext(ctx, "SELECT count(*) FROM demo_log").Scan(&count)
+	latency := time.Since(start)
+
+	if err != nil {
+		fmt.Printf("[%s] READ FAIL | error=%s | latency=%s\n", ts(), err, fmtLatency(latency))
+		return
+	}
+
+	fmt.Printf("[%s] WRITE ok | rows=%d | latency=%s\n", ts(), count, fmtLatency(latency))
+}
+
+func reconnect(ctx context.Context, db *sql.DB) {
+	const retryInterval = 500 * time.Millisecond
+
+	// Purge idle connections so the pool opens fresh ones through
+	// PgBouncer/pg-rw, which may now route to a different primary.
+	db.SetMaxIdleConns(0)
+	db.SetMaxIdleConns(2)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		sleep(ctx, retryInterval)
+
+		// Verify the server is writable, not just reachable.
+		// A read-only standby passes Ping but rejects INSERTs.
+		var inRecovery bool
+		err := db.QueryRowContext(ctx, "SELECT pg_is_in_recovery()").Scan(&inRecovery)
+		if err != nil {
+			fmt.Printf("[%s] RECONNECT FAIL | error=%s\n", ts(), err)
+			continue
+		}
+		if inRecovery {
+			fmt.Printf("[%s] RECONNECT WAIT | server is read-only\n", ts())
+			// Purge again — pool may have connected to the same standby
+			db.SetMaxIdleConns(0)
+			db.SetMaxIdleConns(2)
+			continue
+		}
+
+		fmt.Printf("[%s] Reconnected to PostgreSQL (writable)\n", ts())
+		return
+	}
+}
+
+func ts() string {
+	return time.Now().UTC().Format(time.RFC3339)
+}
+
+func fmtLatency(d time.Duration) string {
+	return fmt.Sprintf("%dms", d.Milliseconds())
+}
+
+func sleep(ctx context.Context, d time.Duration) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(d):
+	}
+}
+
+// buildDSN returns DATABASE_URL if set, otherwise assembles a DSN from
+// individual PG* variables so the password can be injected from a Secret
+// without embedding it in the URL.
+func buildDSN() string {
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		return url
+	}
+	host := os.Getenv("PGHOST")
+	user := os.Getenv("PGUSER")
+	password := os.Getenv("PGPASSWORD")
+	dbname := os.Getenv("PGDATABASE")
+	sslmode := os.Getenv("PGSSLMODE")
+	port := os.Getenv("PGPORT")
+	if host == "" || user == "" || dbname == "" {
+		return ""
+	}
+	if port == "" {
+		port = "5432"
+	}
+	if sslmode == "" {
+		sslmode = "disable"
+	}
+	return fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=%s",
+		user, password, host, port, dbname, sslmode)
+}

@@ -1,0 +1,136 @@
+{{- if or (eq .Values.mode "blue") (eq .Values.mode "green") }}
+{{- $blue := include "cnpg-bg.blue" . -}}
+{{- $green := include "cnpg-bg.green" . -}}
+{{- $clusterName := include "cnpg-bg.clusterName" . -}}
+{{- $otherCluster := include "cnpg-bg.otherCluster" . -}}
+{{- $isBlue := eq .Values.mode "blue" -}}
+{{- $clusterAppSecretName := include "cnpg-bg.clusterAppSecretName" . -}}
+{{- $clusterReplicaSecretName := include "cnpg-bg.clusterReplicaSecretName" . -}}
+{{- $blueReplicaSecretName := include "cnpg-bg.blueReplicaSecretName" . -}}
+{{- $greenReplicaSecretName := include "cnpg-bg.greenReplicaSecretName" . -}}
+{{- $replicaPasswordKey := include "cnpg-bg.replicaPasswordKey" . -}}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $clusterName }}
+  labels:
+    {{- include "cnpg-bg.labels" . | nindent 4 }}
+    cnpg-blue-green/role: {{ .Values.mode }}
+spec:
+  instances: {{ .Values.database.instances }}
+  imageName: {{ include "cnpg-bg.databaseImage" . }}
+
+  {{- with .Values.database.smartShutdownTimeout }}
+  smartShutdownTimeout: {{ . }}
+  {{- end }}
+  {{- with .Values.database.stopDelay }}
+  stopDelay: {{ . }}
+  {{- end }}
+  {{- with .Values.database.switchoverDelay }}
+  switchoverDelay: {{ . }}
+  {{- end }}
+  {{- with .Values.database.primaryUpdateMethod }}
+  primaryUpdateMethod: {{ . | quote }}
+  {{- end }}
+
+  inheritedMetadata:
+    labels:
+      cnpg-blue-green/role: {{ .Values.mode }}
+      cnpg-blue-green/database: {{ .Values.database.name }}
+
+  postgresql:
+    parameters:
+      {{- range $key, $value := .Values.database.postgresql.parameters }}
+      {{ $key }}: {{ $value | quote }}
+      {{- end }}
+    pg_hba:
+      - host replication {{ .Values.replication.username }} all md5
+      - host all all all md5
+
+  bootstrap:
+    {{- if $isBlue }}
+    initdb:
+      database: appdb
+      owner: {{ .Values.credentials.username }}
+      secret:
+        name: {{ $clusterAppSecretName }}
+      {{- with .Values.initdb.postInitSQL }}
+      postInitSQL:
+        {{- range . }}
+        - {{ . | quote }}
+        {{- end }}
+      {{- end }}
+    {{- else }}
+    pg_basebackup:
+      source: {{ $blue }}
+    {{- end }}
+
+  # Declarative role management: the streaming replication role is created and
+  # reconciled by the operator. The password is read from a Kubernetes Secret and
+  # SCRAM-SHA-256 encoded by the operator before being sent to PostgreSQL, so it
+  # never appears in cleartext in postInitSQL, the server log, or pg_stat_statements.
+  managed:
+    roles:
+      - name: {{ .Values.replication.username }}
+        ensure: present
+        login: true
+        replication: true
+        passwordSecret:
+          name: {{ $clusterReplicaSecretName }}
+
+  {{- /* On upgrade: preserve live replica topology to avoid field-manager conflicts.
+         On install: set default topology (blue=primary). */ -}}
+  {{- $existing := lookup "postgresql.cnpg.io/v1" "Cluster" .Release.Namespace $clusterName }}
+  {{- if and $existing $existing.spec $existing.spec.replica }}
+  replica:
+    {{- toYaml $existing.spec.replica | nindent 4 }}
+  {{- else }}
+  replica:
+    {{- if $isBlue }}
+    primary: {{ $blue }}
+    source: {{ $green }}
+    self: {{ $blue }}
+    {{- else }}
+    primary: {{ $blue }}
+    source: {{ $blue }}
+    self: {{ $green }}
+    {{- end }}
+  {{- end }}
+
+  externalClusters:
+    - name: {{ $blue }}
+      connectionParameters:
+        host: {{ include "cnpg-bg.blue.rwHost" . }}
+        user: {{ .Values.replication.username }}
+        dbname: postgres
+        sslmode: disable
+      password:
+        name: {{ $blueReplicaSecretName }}
+        key: {{ $replicaPasswordKey }}
+    - name: {{ $green }}
+      connectionParameters:
+        host: {{ include "cnpg-bg.green.rwHost" . }}
+        user: {{ .Values.replication.username }}
+        dbname: postgres
+        sslmode: disable
+      password:
+        name: {{ $greenReplicaSecretName }}
+        key: {{ $replicaPasswordKey }}
+
+  storage:
+    {{- with .Values.database.storage.storageClass }}
+    storageClass: {{ . }}
+    {{- end }}
+    size: {{ .Values.database.storage.size }}
+
+  {{- with .Values.database.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+
+  {{- if .Values.monitoring.enabled }}
+  monitoring:
+    enablePodMonitor: true
+  {{- end }}
+{{- end }}

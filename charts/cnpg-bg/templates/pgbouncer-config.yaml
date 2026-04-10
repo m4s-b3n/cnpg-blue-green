@@ -1,0 +1,34 @@
+{{- if eq .Values.mode "infra" }}
+{{- if .Values.pgbouncer.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbouncer-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cnpg-bg.labels" . | nindent 4 }}
+data:
+  pgbouncer.ini: |
+    [databases]
+    {{ .Values.pgbouncer.dbName }} = host=pg-rw port=5432 dbname={{ .Values.pgbouncer.dbName }}
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 5432
+    auth_type = md5
+    auth_file = /etc/pgbouncer/userlist.txt
+    ; disable unix socket — all clients connect via TCP in Kubernetes
+    unix_socket_dir =
+    pool_mode = {{ .Values.pgbouncer.poolMode }}
+    max_client_conn = {{ .Values.pgbouncer.maxClientConn }}
+    default_pool_size = {{ .Values.pgbouncer.defaultPoolSize }}
+    min_pool_size = {{ .Values.pgbouncer.minPoolSize }}
+    server_check_query = SELECT 1
+    ; extra_float_digits required by PostgreSQL drivers; options required by CloudNativePG
+    ignore_startup_parameters = extra_float_digits,options
+    admin_users = {{ .Values.credentials.username }}
+    ; always re-resolve pg-rw DNS so service selector patches take effect immediately
+    dns_max_ttl = 0
+{{- end }}
+{{- end }}

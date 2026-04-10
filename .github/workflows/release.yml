@@ -1,0 +1,94 @@
+---
+name: Release
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+# Serialize workflow runs so semantic-release never races across concurrent pushes
+# to main. cancel-in-progress: false queues — never silently discards — a release.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  discover:
+    name: Discover Components
+    uses: ./.github/workflows/discover.yml
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-discover
+      cancel-in-progress: true
+
+  # for security reasons we lint before any other code gets executed
+  lint:
+    name: Lint
+    uses: infinite-automations/workflows/.github/workflows/lint.yml@6a56d002d825974b7405bf096d1b37dfc414bc5e # v1.3.0
+    permissions:
+      contents: read
+      packages: read
+      statuses: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-lint
+      cancel-in-progress: true
+    secrets:
+      APP_ID: ${{ vars.APP_ID_SEMREL }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_KEY_SEMREL }}
+
+  build:
+    name: Build Images
+    needs:
+      - lint
+      - discover
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-build
+      cancel-in-progress: false
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.build-matrix) }}
+    uses: infinite-automations/workflows/.github/workflows/docker.yml@6a56d002d825974b7405bf096d1b37dfc414bc5e # v1.3.0
+    with:
+      image: ghcr.io/${{ github.repository }}/${{ matrix.image }}
+      file: ${{ matrix.file }}
+
+  release:
+    name: Release / ${{ matrix.name }}
+    needs:
+      - build
+      - discover
+    permissions:
+      contents: write
+      issues: write
+      packages: read
+      pull-requests: write
+      statuses: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-release-${{ matrix.name }}
+      cancel-in-progress: false
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        # chart components are sorted last by discover.yml so their
+        # @semantic-release/git push back to main is always a fast-forward
+        include: ${{ fromJSON(needs.discover.outputs.release-matrix) }}
+    uses: infinite-automations/workflows/.github/workflows/release.yml@6a56d002d825974b7405bf096d1b37dfc414bc5e # v1.3.0
+    with:
+      dry-run: ${{ github.event_name == 'pull_request' }}
+      ref: ${{ github.ref_name }}
+      working-directory: ${{ matrix.path }}
+      extra-plugins: |
+        semantic-release-monorepo
+        semantic-release-replace-plugin
+        @semantic-release/git
+    secrets:
+      APP_ID: ${{ vars.APP_ID_SEMREL }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_KEY_SEMREL }}

@@ -1,0 +1,76 @@
+{{- if or (eq .Values.mode "blue") (eq .Values.mode "green") }}
+{{- $blue := include "cnpg-bg.blue" . -}}
+{{- $green := include "cnpg-bg.green" . -}}
+{{- $clusterName := include "cnpg-bg.clusterName" . -}}
+{{- $otherCluster := include "cnpg-bg.otherCluster" . -}}
+{{- $clusterReplicaSecretName := include "cnpg-bg.clusterReplicaSecretName" . -}}
+{{- $clusterAppSecretName := include "cnpg-bg.clusterAppSecretName" . -}}
+{{- $replicaPasswordKey := include "cnpg-bg.replicaPasswordKey" . -}}
+{{- $appPasswordKey := include "cnpg-bg.appPasswordKey" . -}}
+---
+# Post-upgrade hook: wait healthy → test → if standby: switchover
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $clusterName }}-upgrade
+  labels:
+    {{- include "cnpg-bg.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        cnpg-blue-green/hook: post-upgrade
+        cnpg-blue-green/cluster: {{ $clusterName }}
+    spec:
+      serviceAccountName: {{ .Values.hooks.serviceAccount }}-{{ .Values.mode }}
+      restartPolicy: OnFailure
+      containers:
+        - name: hook
+          image: {{ include "cnpg-bg.hookImage" . }}
+          imagePullPolicy: {{ .Values.hooks.imagePullPolicy }}
+          env:
+            - name: HOOK_ACTION
+              value: "post-upgrade"
+            - name: NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: BLUE_CLUSTER
+              value: {{ $blue | quote }}
+            - name: GREEN_CLUSTER
+              value: {{ $green | quote }}
+            - name: MY_CLUSTER
+              value: {{ $clusterName | quote }}
+            - name: OTHER_CLUSTER
+              value: {{ $otherCluster | quote }}
+            - name: DB_NAME
+              value: "appdb"
+            - name: REPL_USERNAME
+              value: {{ .Values.replication.username | quote }}
+            - name: REPL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $clusterReplicaSecretName }}
+                  key: {{ $replicaPasswordKey }}
+            - name: APP_USERNAME
+              value: {{ .Values.credentials.username | quote }}
+            - name: APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $clusterAppSecretName }}
+                  key: {{ $appPasswordKey }}
+            - name: PGBOUNCER_ENABLED
+              value: {{ .Values.pgbouncer.enabled | quote }}
+            - name: HEALTH_CHECK_TIMEOUT
+              value: {{ .Values.hooks.healthCheckTimeout | quote }}
+            - name: SWITCHOVER_TIMEOUT
+              value: {{ .Values.hooks.switchoverTimeout | quote }}
+            - name: SWITCHOVER_ENABLED
+              value: {{ .Values.hooks.switchoverEnabled | quote }}
+            - name: PHASE_HOLD_SECONDS
+              value: {{ .Values.hooks.phaseHoldSeconds | quote }}
+{{- end }}
