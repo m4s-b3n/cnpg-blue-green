@@ -7,7 +7,7 @@ bluegreen:
 
 cluster:
   name: pg-cluster
-  instances: 1
+  instances: 3
   imageName: ghcr.io/cloudnative-pg/postgresql:17.4
   bootstrapMode: initdb  # initdb | pg_basebackup
   primaryUpdateMethod: switchover

@@ -8,7 +8,7 @@ cluster:
   name: pg-blue
   bootstrapMode: initdb
   imageName: ghcr.io/cloudnative-pg/postgresql:17.4
-  instances: 1
+  instances: 3
   smartShutdownTimeout: 30
   primaryUpdateMethod: switchover
   switchoverDelay: 0
