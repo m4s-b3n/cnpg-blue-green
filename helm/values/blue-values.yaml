@@ -1,0 +1,96 @@
+# Blue cluster — initially the primary
+bluegreen:
+  enabled: true
+  environment: blue
+  active: true
+
+cluster:
+  name: pg-cluster-blue
+  bootstrapMode: initdb
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.6
+  instances: 1
+
+  storage:
+    size: 1Gi
+    storageClass: ""
+
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "128MB"
+      wal_level: "replica"
+      max_wal_senders: "10"
+      max_replication_slots: "10"
+      wal_log_hints: "on"
+      archive_mode: "on"
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  bootstrap:
+    initdb:
+      database: appdb
+      owner: appuser
+    replica:
+      enabled: false
+      source: ""
+
+  smartShutdownTimeout: 30
+  switchoverDelay: 0
+  stopDelay: 60
+  primaryUpdateMethod: switchover
+
+distributedTopology:
+  enabled: true
+  primary: pg-cluster-blue
+  source: pg-cluster-green
+  self: pg-cluster-blue
+  promotionToken: ""
+
+externalClusters:
+  - name: pg-cluster-blue
+    connectionParameters:
+      host: pg-cluster-blue-rw.cnpg-demo.svc.cluster.local
+      user: streaming_user
+      dbname: postgres
+      sslmode: disable
+    passwordSecret:
+      name: pg-cluster-blue-replica-user
+      key: password
+  - name: pg-cluster-green
+    connectionParameters:
+      host: pg-cluster-green-rw.cnpg-demo.svc.cluster.local
+      user: streaming_user
+      dbname: postgres
+      sslmode: disable
+    passwordSecret:
+      name: pg-cluster-green-replica-user
+      key: password
+
+credentials:
+  username: appuser
+  password: changeme123
+
+initdb:
+  enabled: true
+  scripts:
+    01_init.sql: |
+      CREATE TABLE IF NOT EXISTS sample_data (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        value TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO sample_data (name, value) VALUES
+        ('demo', 'blue-green deployment test');
+
+monitoring:
+  enabled: false
+
+backup:
+  enabled: false
