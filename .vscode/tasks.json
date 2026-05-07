@@ -47,6 +47,28 @@
         "panel": "shared"
       },
       "problemMatcher": []
+    },
+    {
+      "label": "Gas Town: Start & Attach Mayor",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/.gt && gt mayor start 2>/dev/null; gt mayor attach",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Gas Town: Reset (clear stale state)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/gt-reset.sh",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
     }
   ]
 }
