@@ -206,12 +206,14 @@ make demo
 make logs
 # Expected: [2026-xx-xx] WRITE ok | rows=N | latency=Xms
 
+# Switch to another shell, still watch the shell with the logs
+
 # 4. Trigger switchover (with PgBouncer pause — currently works)
 make switch
 
 # 5. To reproduce the disruption WITHOUT PgBouncer pause/resume:
 make switch-no-pause
-# You'll see WRITE FAIL errors for ~10–20s
+# You'll see WRITE FAIL errors for a few seconds
 ```
 
 ### Inspect the Raw CRDs
@@ -238,20 +240,52 @@ kubectl exec -n cnpg-demo pg-cluster-blue-1 -c postgres -- \
 
 We suspect something is misconfigured. Specifically:
 
-### 1. Is manual service patching the right approach?
+### 1. Is there a better way to route traffic to the active primary?
 
-We patch `pg-rw`'s `cnpg.io/cluster` selector manually after promotion. Is there a
-CNPG-native mechanism that should handle this automatically? We saw `inheritedMetadata`
-in the docs — should we be using that to keep a stable label on "the current primary
-pod" that our service can select without any manual intervention?
+We deploy our own `ClusterIP` Service (`pg-rw`) in front of both clusters so that
+PgBouncer has a single stable endpoint. Its selector includes `cnpg.io/cluster: <name>`,
+which we manually patch during switchover to point at the newly promoted cluster.
+This works, but it's an extra step we have to orchestrate ourselves.
 
-### 2. Is there a natural quiescence point we should be targeting?
+Is there a CNPG-native label or annotation — set automatically on whichever pod is
+the distributed topology primary — that we could select on instead, so our service
+would follow the active primary without any patching? We noticed `inheritedMetadata`
+in the docs — could that be used to propagate a shared label like
+`topology-role: primary` onto the active pod across both clusters? And critically:
+would changing `inheritedMetadata` on a live cluster take effect without restarting
+pods, or would it require a rolling restart?
 
-Between step 2 (demote blue) and step 6 (green writable), there's a window where
-no cluster is a writable primary. Does CNPG provide a status condition or event
-we should wait for to know "green is now the primary and ready for writes" before
-routing traffic? We're currently polling `pg_is_in_recovery()` which feels like a
-hack.
+### 2. How should we detect that promotion is complete?
+
+After we demote the source and pass the promotion token to the target, there's a
+window where no cluster is a writable primary. We need to know when the target has
+finished promoting before routing traffic. Currently we poll PostgreSQL directly
+via `SELECT pg_is_in_recovery()` in a loop — busy-waiting until the new primary
+reports `false`.
+
+We monitored `.status.phase` and `.status.conditions[type=Ready]` on both clusters
+during a live switchover (green→blue). Here's what we observed:
+
+```
+T+0s   GREEN: phase=Applying configuration  ready=False  (demotion helm upgrade applied)
+T+2s   GREEN: phase=Cluster in healthy state ready=True   (demoted, now standby)
+T+4s   GREEN: demotionToken=SET                           (token available)
+T+7s   BLUE:  phase=Promoting to primary cluster ready=False (promotion token applied)
+T+11s  BLUE:  phase=Waiting for the instances to become active ready=False
+T+27s  BLUE:  phase=Upgrading cluster        ready=False  (rolling restart of replicas)
+T+29s  BLUE:  phase=Waiting for the instances to become active ready=False
+T+45s  BLUE:  currentPrimary changed (pg-blue-1 → pg-blue-2, internal switchover)
+T+70s  BLUE:  phase=Cluster in healthy state ready=True   (fully settled)
+```
+
+The primary was actually **writable by ~T+9s** (confirmed via `pg_is_in_recovery()`),
+but `Ready=True` didn't appear until **T+70s** — because it waits for all replicas
+to finish their rolling restart. So `Ready` is far too late to use as a routing signal.
+And `phase=Promoting to primary cluster` is too early (promotion hasn't completed yet).
+
+There doesn't seem to be a condition that means exactly "primary is now accepting
+writes." Is there one we're missing, or is polling `pg_is_in_recovery()` the
+recommended approach? Is there a Kubernetes event we could `kubectl wait` on instead?
 
 ### 3. Are our Cluster timing settings correct?
 
