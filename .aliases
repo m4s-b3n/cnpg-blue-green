@@ -1,0 +1,6 @@
+# Gas Town aliases — sourced automatically in devcontainer
+alias bdw='bd list | grep -v "gt-wfs-\|mol-\|wisp-"'    # beads: real work only
+alias bda='bd list --all | grep -v "gt-wfs-\|mol-\|wisp-"'  # beads: real work (incl closed)
+alias gts='gt status'
+alias gtf='gt feed --limit 30 --no-follow --plain'
+alias gtm='gt mayor attach'
