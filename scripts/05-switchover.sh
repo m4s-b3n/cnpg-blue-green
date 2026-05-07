@@ -14,6 +14,7 @@ GREEN_RELEASE="pg-green"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHART_DIR="$SCRIPT_DIR/../helm/pg-cluster"
 VALUES_DIR="$CHART_DIR/values"
+SKIP_PGBOUNCER="${SKIP_PGBOUNCER:-0}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -46,7 +47,7 @@ pgb_cmd() {
 }
 
 pgb_available() {
-  kubectl get deploy pgbouncer -n "$NAMESPACE" &>/dev/null
+  [[ "$SKIP_PGBOUNCER" != "1" ]] && kubectl get deploy pgbouncer -n "$NAMESPACE" &>/dev/null
 }
 
 detect_active() {

@@ -209,9 +209,8 @@ make logs
 # 4. Trigger switchover (with PgBouncer pause — currently works)
 make switch
 
-# 5. To reproduce the disruption, comment out the PgBouncer PAUSE/RESUME
-#    in scripts/05-switchover.sh (lines starting with "pgb_cmd") then:
-make switch
+# 5. To reproduce the disruption WITHOUT PgBouncer pause/resume:
+make switch-no-pause
 # You'll see WRITE FAIL errors for ~10–20s
 ```
 

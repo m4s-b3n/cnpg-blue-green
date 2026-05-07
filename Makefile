@@ -1,4 +1,4 @@
-.PHONY: setup deploy-blue replication deploy-green deploy-app switch teardown demo logs status
+.PHONY: setup deploy-blue replication deploy-green deploy-app switch switch-no-pause teardown demo logs status
 
 # Full demo sequence
 demo: setup deploy-blue replication deploy-green deploy-app
@@ -26,6 +26,10 @@ deploy-app:
 
 switch:
 	@bash scripts/05-switchover.sh
+
+# Switchover WITHOUT PgBouncer pause/resume (shows the disruption)
+switch-no-pause:
+	@SKIP_PGBOUNCER=1 bash scripts/05-switchover.sh
 
 teardown:
 	@bash scripts/06-teardown.sh
