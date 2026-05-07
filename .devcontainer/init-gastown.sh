@@ -29,12 +29,50 @@ cd "$GT_HOME"
 gt git-init || true
 echo ""
 
-# --- 3. Configure Copilot as default agent (Claude Opus 4.6) ---
-echo "--- Configuring default agent ---"
+# --- 3. Configure tiered model strategy ---
+echo "--- Configuring model tiers ---"
 cd "$GT_HOME"
-gt config default-agent copilot
-gt config agent set copilot 'copilot --yolo --model claude-opus-4.6'
-echo "Agent set to: copilot --yolo --model claude-opus-4.6"
+mkdir -p settings
+cat > settings/config.json << 'MODELS'
+{
+  "type": "town-settings",
+  "version": 1,
+  "default_agent": "claude-sonnet",
+  "agents": {
+    "gpt-free": {
+      "provider": "copilot",
+      "command": "copilot",
+      "args": ["--yolo", "--model", "gpt-4.1"]
+    },
+    "claude-haiku": {
+      "provider": "copilot",
+      "command": "copilot",
+      "args": ["--yolo", "--model", "claude-haiku-4.5"]
+    },
+    "claude-sonnet": {
+      "provider": "copilot",
+      "command": "copilot",
+      "args": ["--yolo", "--model", "claude-sonnet-4.6"]
+    },
+    "claude-opus": {
+      "provider": "copilot",
+      "command": "copilot",
+      "args": ["--yolo", "--model", "claude-opus-4.6"]
+    }
+  },
+  "role_agents": {
+    "boot": "gpt-free",
+    "deacon": "gpt-free",
+    "dog": "gpt-free",
+    "mayor": "claude-opus",
+    "polecat": "claude-sonnet",
+    "refinery": "claude-haiku",
+    "witness": "claude-haiku"
+  },
+  "cost_tier": "economy"
+}
+MODELS
+echo "Model config written: Mayor=Opus, Polecats=Sonnet, Witness/Refinery=Haiku, Boot/Deacon/Dog=GPT-free"
 echo ""
 
 # --- 4. SSH agent forwarding check ---
