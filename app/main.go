@@ -119,6 +119,11 @@ func writeAndCount(ctx context.Context, db *sql.DB, dsn string) {
 func reconnect(ctx context.Context, db *sql.DB, dsn string) {
 	const retryInterval = 500 * time.Millisecond
 
+	// Purge idle connections so the pool opens fresh ones through
+	// PgBouncer/pg-rw, which may now route to a different primary.
+	db.SetMaxIdleConns(0)
+	db.SetMaxIdleConns(2)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -128,12 +133,23 @@ func reconnect(ctx context.Context, db *sql.DB, dsn string) {
 
 		sleep(ctx, retryInterval)
 
-		if err := db.PingContext(ctx); err != nil {
+		// Verify the server is writable, not just reachable.
+		// A read-only standby passes Ping but rejects INSERTs.
+		var inRecovery bool
+		err := db.QueryRowContext(ctx, "SELECT pg_is_in_recovery()").Scan(&inRecovery)
+		if err != nil {
 			fmt.Printf("[%s] RECONNECT FAIL | error=%s\n", ts(), err)
 			continue
 		}
+		if inRecovery {
+			fmt.Printf("[%s] RECONNECT WAIT | server is read-only\n", ts())
+			// Purge again — pool may have connected to the same standby
+			db.SetMaxIdleConns(0)
+			db.SetMaxIdleConns(2)
+			continue
+		}
 
-		fmt.Printf("[%s] Reconnected to PostgreSQL\n", ts())
+		fmt.Printf("[%s] Reconnected to PostgreSQL (writable)\n", ts())
 		return
 	}
 }

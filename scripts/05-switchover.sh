@@ -50,6 +50,10 @@ pgb_available() {
   [[ "$SKIP_PGBOUNCER" != "1" ]] && kubectl get deploy pgbouncer -n "$NAMESPACE" &>/dev/null
 }
 
+pgb_deployed() {
+  kubectl get deploy pgbouncer -n "$NAMESPACE" &>/dev/null
+}
+
 detect_active() {
   # Detect which cluster pg-rw currently routes to
   local current_cluster
@@ -157,6 +161,15 @@ switchover() {
   # Patch services first so pg-rw points to target
   patch_services "$TARGET_RELEASE"
   ok "Services patched → $TARGET [$(elapsed)]"
+
+  # Force PgBouncer to drop stale backend connections to the old primary.
+  # In no-pause mode we skipped PAUSE/RESUME but still need RECONNECT so
+  # PgBouncer creates new backends through the updated pg-rw service.
+  if pgb_deployed; then
+    info "Reconnecting PgBouncer backends → $TARGET..."
+    pgb_cmd "RECONNECT appdb;"
+    ok "PgBouncer backends reconnecting [$(elapsed)]"
+  fi
 
   # Now poll until the target primary is actually writable via pg-rw
   local writable=false
