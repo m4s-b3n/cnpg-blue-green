@@ -2,5 +2,5 @@ apiVersion: v2
 name: cnpg-bg
 description: Zero-downtime PostgreSQL blue/green deployments with CloudNativePG
 type: application
-version: 0.1.0
+version: 1.0.0
 appVersion: "17"
