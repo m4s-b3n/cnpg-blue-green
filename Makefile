@@ -1,5 +1,6 @@
 # ─── CNPG Blue/Green Demo ─────────────────────────────────────────────────────
 # Usage (in order):
+#   make prefetch       → (once, online) pull helm chart + all images for offline use
 #   make setup          → create k3d cluster + install CNPG operator
 #   make images         → build & load hooks + app images (optional — skipping
 #                         uses the latest published images from ghcr.io)
@@ -12,7 +13,7 @@
 #   make clean          → remove everything (keeps operator + cluster)
 #   make delete-cluster → remove the k3d cluster entirely
 
-.PHONY: setup images hooks-build hooks-load app-build app-load \
+.PHONY: prefetch setup images hooks-build hooks-load app-build app-load \
         install switchover app logs status clean delete-cluster monitor
 
 # ─── Config ──────────────────────────────────────────────────────────────────
@@ -26,6 +27,14 @@ export RELEASE            ?= mydb
 export CHART              ?= ./charts/cnpg-bg
 export VALUES             ?= $(CHART)/values.yaml
 export CNPG_CHART_VERSION ?= 0.28.2
+# Keep in sync with charts/cnpg-bg/values.yaml
+export POSTGRES_IMAGE     ?= ghcr.io/cloudnative-pg/postgresql:17.10
+export PGBOUNCER_IMAGE    ?= ghcr.io/cloudnative-pg/pgbouncer:1.25.2
+export CACHE_DIR          ?= ./charts/cache
+
+# ─── 0. Prefetch: helm chart + images for offline use ───────────────────────
+prefetch:
+	@scripts/prefetch.sh
 
 # ─── 1. Setup: cluster + operator ────────────────────────────────────────────
 setup:

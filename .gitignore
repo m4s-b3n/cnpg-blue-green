@@ -8,3 +8,6 @@ github_conf
 !.devcontainer/
 !.github/
 node_modules/
+
+# Offline prefetch cache
+charts/cache/

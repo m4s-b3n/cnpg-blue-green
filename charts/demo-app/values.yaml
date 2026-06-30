@@ -1,11 +1,11 @@
-# Values for deploying demo-app via chartpack (https://github.com/cotzo/chartpack)
-# Usage: helm upgrade --install demo-app oci://ghcr.io/cotzo/charts/chartpack -f values.yaml
+# Default values for demo-app chart
+# Usage: helm upgrade --install demo-app ./charts/demo-app
 
 containers:
   app:
     image:
       repository: ghcr.io/m4s-b3n/cnpg-blue-green/demo-app
-      tag: latest
+      tag: 1.0.0
     env:
       PGHOST:
         value: "pgbouncer.cnpg-demo.svc.cluster.local"
@@ -30,3 +30,6 @@ containers:
       limits:
         memory: "64Mi"
         cpu: "50m"
+    securityContext:
+      runAsUser: 65534 # nobody on Alpine
+      runAsGroup: 65534

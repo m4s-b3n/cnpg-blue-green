@@ -36,6 +36,7 @@ helm upgrade "${RELEASE}-${SECOND}" "${CHART}" \
 	-f "${VALUES}" \
 	--set "mode=${SECOND}" \
 	--set hooks.switchoverEnabled=false \
+	--set hooks.phaseHoldSeconds=4 \
 	--timeout=600s
 
 ACTIVE_AFTER=$(kubectl get svc pg-rw -n "${NAMESPACE}" \

@@ -114,7 +114,7 @@ hooks:
   image:
     registry: ghcr.io
     repository: m4s-b3n/cnpg-blue-green/cnpg-bg-hooks
-    tag: latest
+    tag: 1.0.0
   imagePullPolicy: IfNotPresent
   healthCheckTimeout: 300
   switchoverTimeout: 120

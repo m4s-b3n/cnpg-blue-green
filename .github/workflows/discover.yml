@@ -82,7 +82,7 @@ jobs:
             path="${path#./}"
             name=$(basename "$path")
             entry=$(jq -cn --arg n "$name" --arg p "$path" '{name: $n, path: $p}')
-            if [[ -d "charts/${name}" ]]; then
+            if [[ "${path}" == charts/* ]]; then
               release_charts=$(jq -c --argjson e "$entry" '. + [$e]' <<< "$release_charts")
             else
               release_images=$(jq -c --argjson e "$entry" '. + [$e]' <<< "$release_images")
@@ -97,7 +97,7 @@ jobs:
           if [[ -n "$TAG" ]]; then
             component="${TAG%%-v[0-9]*}"
             version="${TAG#"${component}-v"}"
-            if [[ -d "charts/${component}" ]]; then
+            if [[ -f "charts/${component}/.releaserc.json" ]]; then
               chart_matrix=$(jq -cn \
                 --arg c "$component" --arg v "$version" --arg p "charts/${component}" \
                 '[{component: $c, version: $v, path: $p}]')

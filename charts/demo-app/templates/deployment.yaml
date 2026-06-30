@@ -1,0 +1,57 @@
+{{- range $name, $c := .Values.containers }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "demo-app.fullname" $ }}-{{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "demo-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "demo-app.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $name }}
+  template:
+    metadata:
+      labels:
+        {{- include "demo-app.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $name }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ $c.securityContext.runAsUser }}
+        runAsGroup: {{ $c.securityContext.runAsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ $name }}
+          image: "{{ $c.image.repository }}:{{ $c.image.tag }}"
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            {{- range $envName, $envVal := $c.env }}
+            - name: {{ $envName }}
+              {{- if $envVal.value }}
+              value: {{ $envVal.value | quote }}
+              {{- else if $envVal.valueFrom }}
+              valueFrom:
+                {{- if $envVal.valueFrom.secretKeyRef }}
+                secretKeyRef:
+                  name: {{ $envVal.valueFrom.secretKeyRef.name }}
+                  key: {{ $envVal.valueFrom.secretKeyRef.key }}
+                {{- end }}
+              {{- end }}
+            {{- end }}
+          {{- if $c.resources }}
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+          {{- end }}
+{{- end }}
